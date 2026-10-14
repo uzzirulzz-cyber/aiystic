@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: Lint, Type-check, Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+        env:
+          DATABASE_URL: "file::memory:?cache=shared"
+
+      - name: Type check
+        run: bunx tsc --noEmit
+        env:
+          DATABASE_URL: "file::memory:?cache=shared"
+
+      - name: Build
+        run: bun run build
+        env:
+          DATABASE_URL: "file::memory:?cache=shared"
+          NEXT_PUBLIC_APP_URL: "https://mysticai.playbeat.live"
+          NEXT_PUBLIC_APP_NAME: "Mystic AI"
