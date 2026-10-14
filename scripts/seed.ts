@@ -15,8 +15,8 @@ async function main() {
   console.log("🌱 Seeding Mystic AI database...");
 
   // Create Super Admin — credentials MUST come from environment, never hardcoded
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+  const adminPassword = process.env.ADMIN_PASSWORD || "";
   const adminName = process.env.ADMIN_NAME || "Mystic Admin";
 
   if (!adminEmail || !adminPassword) {

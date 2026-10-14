@@ -1,14 +1,13 @@
 // Mystic AI - Auth helpers
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
-import { randomUUID } from "crypto";
+import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 
 const SESSION_COOKIE = "mystic_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-// Simple password hash (not bcrypt — uses Node's scrypt)
+// Simple password hash (Node's scrypt — async-friendly, no native deps)
 async function hashPassword(password: string): Promise<string> {
-  const { scryptSync, randomBytes } = await import("crypto");
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, 64).toString("hex");
   return `scrypt$${salt}$${hash}`;
@@ -18,9 +17,10 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   try {
     if (!stored.startsWith("scrypt$")) return false;
     const [, salt, hash] = stored.split("$");
-    const { scryptSync } = await import("crypto");
-    const testHash = scryptSync(password, salt, 64).toString("hex");
-    return testHash === hash;
+    const testHashBuf = scryptSync(password, salt, 64);
+    const storedBuf = Buffer.from(hash, "hex");
+    if (testHashBuf.length !== storedBuf.length) return false;
+    return timingSafeEqual(testHashBuf, storedBuf);
   } catch {
     return false;
   }
