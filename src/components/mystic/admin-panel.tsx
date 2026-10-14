@@ -28,6 +28,9 @@ import {
   Layers,
   RefreshCw,
   Ban,
+  Wallet,
+  Zap,
+  Gift,
 } from "lucide-react";
 import { MysticWordmark } from "./logo";
 import { PROVIDERS } from "@/lib/types";
@@ -50,6 +53,7 @@ export function AdminPanel({ user, onLogout, onNavigate }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
+  const [budget, setBudget] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchOverview = useCallback(async () => {
@@ -58,6 +62,17 @@ export function AdminPanel({ user, onLogout, onNavigate }: AdminPanelProps) {
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
       setOverview(data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  const fetchBudget = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/budget");
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setBudget(data);
     } catch (err) {
       console.error(err);
     }
@@ -101,7 +116,8 @@ export function AdminPanel({ user, onLogout, onNavigate }: AdminPanelProps) {
     fetchUsers();
     fetchTasks();
     fetchLogs();
-  }, [fetchOverview, fetchUsers, fetchTasks, fetchLogs]);
+    fetchBudget();
+  }, [fetchOverview, fetchUsers, fetchTasks, fetchLogs, fetchBudget]);
 
   const handleUpdateUser = async (userId: string, updates: { role?: string; status?: string }) => {
     try {
@@ -182,6 +198,9 @@ export function AdminPanel({ user, onLogout, onNavigate }: AdminPanelProps) {
             </TabsTrigger>
             <TabsTrigger value="audit" className="gap-1.5">
               <ScrollText className="w-3.5 h-3.5" /> Audit
+            </TabsTrigger>
+            <TabsTrigger value="budget" className="gap-1.5">
+              <Wallet className="w-3.5 h-3.5" /> Budget
             </TabsTrigger>
           </TabsList>
 
@@ -535,8 +554,283 @@ export function AdminPanel({ user, onLogout, onNavigate }: AdminPanelProps) {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* BUDGET */}
+          <TabsContent value="budget">
+            <div className="space-y-4">
+              {budget ? (
+                <>
+                  {/* Bonus banner for Super Admin */}
+                  {budget.budget.isBonus && (
+                    <Card
+                      className="border-2"
+                      style={{
+                        borderColor: "oklch(0.65 0.2 250 / 50%)",
+                        background: "linear-gradient(135deg, oklch(0.22 0.028 260 / 80%), oklch(0.2 0.025 290 / 80%))",
+                        boxShadow: "0 0 30px oklch(0.65 0.2 250 / 20%)",
+                      }}
+                    >
+                      <CardContent className="p-5">
+                        <div className="flex items-start gap-4">
+                          <div
+                            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                            style={{
+                              background: "linear-gradient(135deg, #4f7dff, #8a6cf0)",
+                              boxShadow: "0 8px 20px -8px rgba(79,125,255,0.55)",
+                            }}
+                          >
+                            <Gift className="w-6 h-6 text-white" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-bold">Super Admin API Bonus</h3>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px]"
+                                style={{
+                                  color: "oklch(0.7 0.18 150)",
+                                  borderColor: "oklch(0.7 0.18 150 / 40%)",
+                                }}
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full mr-1 status-pulse-green"
+                                  style={{ background: "oklch(0.7 0.18 150)" }}
+                                />
+                                ACTIVE
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-3">
+                              {budget.budget.bonusLabel} — full access to all 5 AI engines via OpenRouter.
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              <BudgetStat
+                                label="Total Budget"
+                                value={`$${budget.budget.total.toFixed(2)}`}
+                                sub={budget.budget.period}
+                                icon={Wallet}
+                                color="oklch(0.65 0.2 250)"
+                              />
+                              <BudgetStat
+                                label="Spent"
+                                value={`$${budget.budget.spent.toFixed(4)}`}
+                                sub={`${budget.budget.usedPct.toFixed(2)}% used`}
+                                icon={TrendingUp}
+                                color="oklch(0.75 0.18 50)"
+                              />
+                              <BudgetStat
+                                label="Remaining"
+                                value={`$${budget.budget.remaining.toFixed(4)}`}
+                                sub={`of $${budget.budget.total.toFixed(2)}`}
+                                icon={CheckCircle2}
+                                color="oklch(0.7 0.18 150)"
+                              />
+                              <BudgetStat
+                                label="API Calls"
+                                value={String(budget.usage.totalCalls)}
+                                sub={`${budget.usage.totalTokens.toLocaleString()} tokens`}
+                                icon={Zap}
+                                color="oklch(0.65 0.22 290)"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Usage progress bar */}
+                  <Card className="glass-panel">
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4" style={{ color: "var(--mystic-blue)" }} />
+                          {budget.budget.period.charAt(0).toUpperCase() + budget.budget.period.slice(1)} Usage
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(budget.budget.periodStart).toLocaleDateString()} —{" "}
+                          {new Date(budget.budget.periodEnd).toLocaleDateString()}
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            ${budget.budget.spent.toFixed(4)} spent
+                          </span>
+                          <span className="font-mono text-xs">
+                            {budget.budget.usedPct.toFixed(2)}%
+                          </span>
+                          <span className="text-muted-foreground">
+                            ${budget.budget.remaining.toFixed(4)} remaining
+                          </span>
+                        </div>
+                        <div
+                          className="h-3 rounded-full overflow-hidden"
+                          style={{ background: "oklch(0.27 0.03 260)" }}
+                        >
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, budget.budget.usedPct)}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className="h-full rounded-full"
+                            style={{
+                              background:
+                                budget.budget.usedPct < 50
+                                  ? "linear-gradient(90deg, oklch(0.65 0.2 250), oklch(0.7 0.18 150))"
+                                  : budget.budget.usedPct < 80
+                                  ? "linear-gradient(90deg, oklch(0.75 0.18 50), oklch(0.7 0.18 150))"
+                                  : "linear-gradient(90deg, oklch(0.65 0.22 25), oklch(0.75 0.18 50))",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* OpenRouter integration status */}
+                  <Card className="glass-panel">
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Cpu className="w-4 h-4" style={{ color: "var(--mystic-violet)" }} />
+                        AI Provider Integration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-md bg-background/30">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-9 h-9 rounded-md flex items-center justify-center"
+                              style={{
+                                background: budget.openrouter.configured
+                                  ? "oklch(0.7 0.18 150 / 20%)"
+                                  : "oklch(0.65 0.22 25 / 20%)",
+                                color: budget.openrouter.configured
+                                  ? "oklch(0.7 0.18 150)"
+                                  : "oklch(0.65 0.22 25)",
+                              }}
+                            >
+                              {budget.openrouter.configured ? (
+                                <CheckCircle2 className="w-4 h-4" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium">OpenRouter</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {budget.openrouter.configured
+                                  ? `Connected · key: ${budget.openrouter.keyPrefix}`
+                                  : "Not configured"}
+                              </div>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px]"
+                            style={{
+                              color: budget.openrouter.configured
+                                ? "oklch(0.7 0.18 150)"
+                                : "oklch(0.65 0.22 25)",
+                              borderColor: budget.openrouter.configured
+                                ? "oklch(0.7 0.18 150 / 40%)"
+                                : "oklch(0.65 0.22 25 / 40%)",
+                            }}
+                          >
+                            {budget.openrouter.configured ? "LIVE" : "OFFLINE"}
+                          </Badge>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground mb-2">
+                          All 5 engines route through OpenRouter with these models:
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {budget.openrouter.engines &&
+                            Object.entries(budget.openrouter.engines).map(([engine, info]: [string, any]) => (
+                              <div
+                                key={engine}
+                                className="flex items-center gap-2 p-2 rounded-md bg-background/30"
+                              >
+                                <ProviderIconSmall provider={engine as keyof typeof PROVIDERS} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-medium">
+                                    {PROVIDERS[engine as keyof typeof PROVIDERS]?.displayName || engine}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground font-mono truncate">
+                                    {info.model}
+                                  </div>
+                                </div>
+                                <CheckCircle2
+                                  className="w-3 h-3 flex-shrink-0"
+                                  style={{ color: "oklch(0.7 0.18 150)" }}
+                                />
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              ) : (
+                <Card className="glass-panel">
+                  <CardContent className="p-8 text-center">
+                    <div className="text-sm text-muted-foreground">Loading budget…</div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
+    </div>
+  );
+}
+
+function BudgetStat({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: any;
+  color: string;
+}) {
+  return (
+    <div
+      className="rounded-lg p-3"
+      style={{ background: "oklch(0.18 0.025 260 / 60%)", border: "1px solid oklch(0.3 0.025 260 / 40%)" }}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+        <Icon className="w-3 h-3" style={{ color }} />
+      </div>
+      <div className="text-lg font-bold font-mono">{value}</div>
+      <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>
+    </div>
+  );
+}
+
+function ProviderIconSmall({ provider }: { provider: keyof typeof PROVIDERS }) {
+  const map = {
+    CLAUDE: Sparkles,
+    GEMINI: Eye,
+    GLM: Brain,
+    CODEX: Code2,
+    RESEARCH: Globe,
+  };
+  const Icon = map[provider] || Layers;
+  const color = PROVIDERS[provider]?.color || "var(--mystic-blue)";
+  return (
+    <div
+      className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+      style={{ background: `${color}25`, color }}
+    >
+      <Icon className="w-3.5 h-3.5" />
     </div>
   );
 }
