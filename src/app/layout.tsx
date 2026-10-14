@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Manrope } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 
@@ -13,19 +13,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const manrope = Manrope({
-  variable: "--font-manrope",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
-
 export const metadata: Metadata = {
   title: "Mystic AI — Five-Engine AI Workspace",
   description:
-    "A unified AI workspace coordinating Claude, Gemini, GLM, Codex, and Research agents on the same task. Plan, execute, verify, and deliver from one instruction.",
+    "Premium multi-agent AI workspace coordinating Claude, Gemini, GLM, Codex, and Research agents. Plan, execute, verify, and deliver from one instruction.",
   keywords: ["Mystic AI", "Multi-agent", "Claude", "Gemini", "GLM", "Codex", "AI workspace"],
-  authors: [{ name: "Playbeat Digital" }],
-  icons: { icon: "/logo.svg" },
+  authors: [{ name: "Mystic AI" }],
 };
 
 export default function RootLayout({
@@ -34,10 +27,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="dark">
+    <html lang="en" suppressHydrationWarning data-theme="midnight">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} antialiased bg-background text-foreground min-h-screen`}
-        style={{ fontFamily: "var(--font-manrope), var(--font-geist-sans), sans-serif" }}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
       >
         {children}
         <Toaster />
@@ -45,4 +37,3 @@ export default function RootLayout({
     </html>
   );
 }
-

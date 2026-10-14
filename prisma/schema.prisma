@@ -18,6 +18,11 @@ model User {
   role          String   @default("USER") // SUPER_ADMIN | ADMIN | USER
   status        String   @default("ACTIVE") // ACTIVE | SUSPENDED
   avatarUrl     String?
+  // Super Admin API credit package ($250/month bonus)
+  creditBalanceUsd   Float    @default(0)
+  creditMonthlyUsd   Float    @default(0)
+  creditResetDay     Int      @default(1)
+  creditLastReset    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
