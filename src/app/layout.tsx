@@ -27,9 +27,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme="midnight" data-coreui="theme">
+    <html lang="en" suppressHydrationWarning data-theme="midnight" data-coreui-theme="dark">
       <head>
-        {/* CoreUI Bootstrap 5 + CoreUI components */}
+        {/* CoreUI Bootstrap 5.6.1 — deeply embedded */}
         <link rel="stylesheet" href="/coreui/css/style.min.css" />
         <script defer src="/coreui/js/coreui.bundle.min.js" />
       </head>
