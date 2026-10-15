@@ -14,6 +14,7 @@ import {
   CreditCard,
   BarChart3,
   Settings,
+  Shield,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -180,6 +181,29 @@ export function Sidebar({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Admin Panel link (only for admins) */}
+      {(user.role === "SUPER_ADMIN" || user.role === "ADMIN") && (
+        <div className="px-2 pb-2">
+          <a
+            href="/admin"
+            className={cn("nav-item", collapsed && "justify-center px-0")}
+            style={{
+              background: "linear-gradient(90deg, rgba(221,187,112,0.12), transparent)",
+              borderColor: "rgba(221,187,112,0.2)",
+            }}
+            title={collapsed ? "Admin Panel" : undefined}
+          >
+            <Shield className="w-4 h-4 flex-shrink-0" style={{ color: "var(--gold)" }} />
+            {!collapsed && (
+              <>
+                <span className="flex-1">Admin Panel</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+              </>
+            )}
+          </a>
         </div>
       )}
 

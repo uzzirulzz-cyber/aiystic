@@ -281,9 +281,11 @@ export async function checkProviderHealth(provider: Provider): Promise<{
   const startTime = Date.now();
 
   try {
+    // GLM is a reasoning model — needs more tokens to produce final content
+    const maxTokens = provider === "GLM" || provider === "RESEARCH" ? 200 : 20;
     const result = await callProvider(provider, "Reply with exactly: PONG", {
       userId: "health-check",
-      maxTokens: 10,
+      maxTokens,
       temperature: 0,
     });
 
@@ -309,7 +311,12 @@ export async function checkAllProvidersHealth(): Promise<
   Array<{ provider: Provider; connected: boolean; model: string; latencyMs: number; error?: string }>
 > {
   const providers: Provider[] = ["CLAUDE", "GEMINI", "GLM", "CODEX", "RESEARCH"];
-  const results = await Promise.all(providers.map((p) => checkProviderHealth(p)));
+  // Run SEQUENTIALLY to avoid OOM in sandboxed environments
+  const results: Array<{ provider: Provider; connected: boolean; model: string; latencyMs: number; error?: string }> = [];
+  for (const p of providers) {
+    const r = await checkProviderHealth(p);
+    results.push(r);
+  }
 
   // Update ProviderConfig in DB
   for (const r of results) {
