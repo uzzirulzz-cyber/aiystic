@@ -9,13 +9,14 @@ import { PROVIDERS, type Provider } from "./types";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
 
-// Model routing — verified live
+// Model routing — synced with openrouter.ts ENGINE_MODELS to ensure consistency
+import { ENGINE_MODELS, chatCompletion } from "./openrouter";
 const MODEL_MAP: Record<Provider, string> = {
-  CLAUDE: process.env.MODEL_CLAUDE || "deepseek/deepseek-r1",
-  GEMINI: process.env.MODEL_GEMINI || "qwen/qwen-2.5-72b-instruct",
-  GLM: process.env.MODEL_GLM || "glm-4.6",
-  CODEX: process.env.MODEL_CODEX || "qwen/qwen-2.5-coder-32b-instruct",
-  RESEARCH: process.env.MODEL_RESEARCH || "meta-llama/llama-3.3-70b-instruct",
+  CLAUDE: ENGINE_MODELS.CLAUDE.model,
+  GEMINI: ENGINE_MODELS.GEMINI.model,
+  GLM: ENGINE_MODELS.GLM.model,
+  CODEX: ENGINE_MODELS.CODEX.model,
+  RESEARCH: ENGINE_MODELS.RESEARCH.model,
 };
 
 export interface ProviderCallResult {
@@ -269,6 +270,8 @@ async function recordUsage(
 
 // ============================================================================
 // Health check — verifies provider is actually live
+// Uses the robust chatCompletion from openrouter.ts which handles
+// reasoning models, fallbacks, and content extraction.
 // ============================================================================
 
 export async function checkProviderHealth(provider: Provider): Promise<{
@@ -279,30 +282,64 @@ export async function checkProviderHealth(provider: Provider): Promise<{
   error?: string;
 }> {
   const startTime = Date.now();
+  const model = MODEL_MAP[provider];
 
+  // For GLM, use the z-ai-sdk directly
+  if (provider === "GLM") {
+    try {
+      const result = await callGLM(
+        [
+          { role: "system", content: "Reply with exactly one word." },
+          { role: "user", content: "Reply with: PONG" },
+        ],
+        { userId: "health-check", maxTokens: 200, temperature: 0 }
+      );
+      return {
+        provider,
+        connected: result.success,
+        model: result.model || model,
+        latencyMs: Date.now() - startTime,
+        error: result.error,
+      };
+    } catch (err) {
+      return {
+        provider,
+        connected: false,
+        model,
+        latencyMs: Date.now() - startTime,
+        error: err instanceof Error ? err.message : "GLM error",
+      };
+    }
+  }
+
+  // For all other providers, use chatCompletion from openrouter.ts
+  // (handles reasoning models, fallbacks, content extraction)
   try {
-    // GLM is a reasoning model — needs more tokens to produce final content
-    const maxTokens = provider === "GLM" || provider === "RESEARCH" ? 200 : 20;
-    const result = await callProvider(provider, "Reply with exactly: PONG", {
-      userId: "health-check",
-      maxTokens,
+    const result = await chatCompletion(provider, {
+      messages: [
+        { role: "user", content: "Reply with exactly: PONG" },
+      ],
+      maxTokens: 100,
       temperature: 0,
     });
 
+    // If we got non-empty content, it's live
+    const connected = !!(result.content && result.content.trim().length > 0);
+
     return {
       provider,
-      connected: result.success,
-      model: result.model,
+      connected,
+      model: result.model || model,
       latencyMs: Date.now() - startTime,
-      error: result.error,
+      error: connected ? undefined : "Empty response",
     };
   } catch (err) {
     return {
       provider,
       connected: false,
-      model: MODEL_MAP[provider],
+      model,
       latencyMs: Date.now() - startTime,
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: err instanceof Error ? err.message.slice(0, 100) : "Unknown error",
     };
   }
 }

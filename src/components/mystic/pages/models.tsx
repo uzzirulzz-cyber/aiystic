@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Sparkles,
@@ -13,157 +13,284 @@ import {
   RefreshCw,
   Zap,
   Clock,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const PROVIDER_META: Record<string, { icon: any; color: string; category: string }> = {
-  CLAUDE: { icon: Sparkles, color: "#4F8CFF", category: "Reasoning" },
-  GEMINI: { icon: Eye, color: "#9B7AFF", category: "Multimodal" },
-  GLM: { icon: Brain, color: "#30C995", category: "Technical" },
-  CODEX: { icon: Code2, color: "#F2B65D", category: "Code Generation" },
-  RESEARCH: { icon: Globe, color: "#DDBB70", category: "Web Research" },
+const PROVIDER_META: Record<string, { icon: any; color: string; category: string; tagline: string }> = {
+  CLAUDE: { icon: Sparkles, color: "#4F8CFF", category: "Reasoning · writing · review", tagline: "Deep reasoning, long-context analysis, architecture" },
+  GEMINI: { icon: Eye, color: "#9B7AFF", category: "Multimodal · structured output", tagline: "Multimodal analysis of images, documents, complex info" },
+  GLM: { icon: Brain, color: "#30C995", category: "Reasoning · technical analysis", tagline: "Additional reasoning, coding, model diversity" },
+  CODEX: { icon: Code2, color: "#F2B65D", category: "Scoped coding-agent runtime", tagline: "Code editing, debugging, test execution, repo changes" },
+  RESEARCH: { icon: Globe, color: "#DDBB70", category: "Authorized web retrieval", tagline: "Web research, information gathering, deliverables" },
 };
+
+type HealthState = "idle" | "running" | "passed" | "failed";
+
+interface HealthResult {
+  provider: string;
+  connected: boolean;
+  model: string;
+  latencyMs: number;
+  error?: string;
+}
 
 export function ModelsPage() {
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [checking, setChecking] = useState<string | null>(null);
+  const [healthState, setHealthState] = useState<HealthState>("idle");
+  const [healthResults, setHealthResults] = useState<Record<string, HealthResult>>({});
+  const [autoChecked, setAutoChecked] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/providers/list")
-      .then((r) => r.json())
-      .then((d) => {
-        setProviders(d.providers || []);
-        setLoading(false);
-      });
+  const fetchProviders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/providers/list");
+      const data = await res.json();
+      setProviders(data.providers || []);
+      return data.providers || [];
+    } catch {
+      return [];
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const runHealthCheck = async () => {
+  const runHealthCheck = useCallback(async (silent = false) => {
+    setHealthState("running");
     try {
-      setChecking("all");
       const res = await fetch("/api/providers/health-check", { method: "POST" });
+      if (!res.ok) throw new Error("Health check failed");
       const data = await res.json();
-      if (data.results) {
-        const liveCount = data.results.filter((r: any) => r.connected).length;
-        toast.success(`${liveCount}/5 providers verified live`);
-        // Refresh list
-        const listRes = await fetch("/api/providers/list");
-        const listData = await listRes.json();
-        setProviders(listData.providers || []);
+      const results: Record<string, HealthResult> = {};
+      for (const r of data.results || []) {
+        results[r.provider] = r;
       }
+      setHealthResults(results);
+      const liveCount = Object.values(results).filter((r) => r.connected).length;
+      setHealthState(liveCount === 5 ? "passed" : liveCount > 0 ? "passed" : "failed");
+      if (!silent) {
+        toast.success(`${liveCount}/5 providers verified LIVE`);
+      }
+      // Refresh provider list to get updated DB status
+      await fetchProviders();
     } catch (err) {
-      toast.error("Health check failed");
-    } finally {
-      setChecking(null);
+      setHealthState("failed");
+      if (!silent) toast.error("Health check failed");
     }
+  }, [fetchProviders]);
+
+  // Initial load + auto-run health check
+  useEffect(() => {
+    fetchProviders().then(() => {
+      if (!autoChecked) {
+        setAutoChecked(true);
+        runHealthCheck(true);
+      }
+    });
+  }, [fetchProviders, runHealthCheck, autoChecked]);
+
+  const healthStatusLabel: Record<HealthState, string> = {
+    idle: "Live check: not run",
+    running: "Live check: running…",
+    passed: "Live check: passed",
+    failed: "Live check: failed",
+  };
+
+  const healthStatusColor: Record<HealthState, string> = {
+    idle: "var(--muted-foreground)",
+    running: "var(--warning)",
+    passed: "var(--success)",
+    failed: "var(--danger)",
   };
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton h-64" />)}
+      <div className="container-fluid py-4">
+        <div className="row g-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="col-md-6 col-lg-4">
+              <div className="card skeleton" style={{ height: "280px" }} />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6 lg:py-8">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div className="container-fluid py-4 px-lg-4">
+      {/* Header */}
+      <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Model Connections</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            All 5 engines are live and verified via OpenRouter + z-ai-sdk.
+          <h1 className="h3 mb-1 fw-bold">Model Connections</h1>
+          <p className="text-muted small mb-0">
+            All 5 engines route through OpenRouter + z-ai-sdk. Real API calls, no mocks.
           </p>
         </div>
         <button
-          onClick={runHealthCheck}
-          disabled={checking !== null}
-          className="btn-mystic flex items-center gap-1.5 text-xs"
+          onClick={() => runHealthCheck(false)}
+          disabled={healthState === "running"}
+          className="btn btn-primary d-flex align-items-center gap-2"
         >
-          {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Test All Connections
+          {healthState === "running" ? (
+            <Loader2 className="spin" style={{ width: "1rem", height: "1rem" }} />
+          ) : (
+            <RefreshCw style={{ width: "1rem", height: "1rem" }} />
+          )}
+          {healthState === "running" ? "Verifying…" : "Run Live Check"}
         </button>
       </div>
 
-      {/* Status summary banner */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mystic-card p-4 mb-6 flex items-center gap-3"
-        style={{ background: "linear-gradient(135deg, rgba(48,201,149,0.08), rgba(79,140,255,0.04))" }}
-      >
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: "rgba(48,201,149,0.15)" }}>
-          <CheckCircle2 className="w-5 h-5" style={{ color: "var(--success)" }} />
-        </div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold">All 5 engines fully configured</div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            Real API calls. No mocks. Every response is produced by a live model.
+      {/* Live check status banner */}
+      <div className="card mb-4 border-0 shadow-sm" style={{ background: "var(--card)" }}>
+        <div className="card-body d-flex align-items-center gap-3 py-3">
+          <div className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+            style={{
+              width: "44px", height: "44px",
+              background: healthState === "passed" ? "rgba(48,201,149,0.15)" :
+                          healthState === "running" ? "rgba(242,182,93,0.15)" :
+                          healthState === "failed" ? "rgba(240,113,120,0.15)" :
+                          "rgba(153,171,199,0.1)",
+            }}>
+            {healthState === "passed" && <CheckCircle2 style={{ width: 22, height: 22, color: "var(--success)" }} />}
+            {healthState === "running" && <Loader2 className="spin" style={{ width: 22, height: 22, color: "var(--warning)" }} />}
+            {healthState === "failed" && <XCircle style={{ width: 22, height: 22, color: "var(--danger)" }} />}
+            {healthState === "idle" && <AlertCircle style={{ width: 22, height: 22, color: "var(--muted-foreground)" }} />}
           </div>
+          <div className="flex-grow-1">
+            <div className="fw-semibold small">{healthStatusLabel[healthState]}</div>
+            <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+              {healthState === "passed" && "All 5 providers responded with real API calls. No mocks."}
+              {healthState === "running" && "Sending PONG test requests to each model sequentially…"}
+              {healthState === "failed" && "One or more providers failed to respond. Check individual cards."}
+              {healthState === "idle" && "Click 'Run Live Check' to verify all models."}
+            </div>
+          </div>
+          {healthState === "passed" && (
+            <span className="badge rounded-pill" style={{ background: "rgba(48,201,149,0.15)", color: "var(--success)", padding: "0.5em 0.75em" }}>
+              ALL LIVE
+            </span>
+          )}
         </div>
-        <span className="status-pill status-pill-live">ALL LIVE</span>
-      </motion.div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Provider cards grid — Bootstrap row/col */}
+      <div className="row g-3">
         {providers.map((p, i) => {
           const meta = PROVIDER_META[p.id] || PROVIDER_META.CLAUDE;
           const Icon = meta.icon;
+          const health = healthResults[p.id];
+          const isConnected = health ? health.connected : (p.connected ?? p.liveResult ?? true);
+          const statusLabel = health
+            ? (health.connected ? "Live" : "Failed")
+            : (p.connected ? "Configured" : "Connecting…");
+          const statusColor = health
+            ? (health.connected ? "var(--success)" : "var(--danger)")
+            : (p.connected ? "var(--success)" : "var(--warning)");
+
           return (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="mystic-card p-5 relative overflow-hidden"
+              className="col-md-6 col-lg-4"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-15"
-                style={{ background: meta.color }} />
-              <div className="relative">
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ background: `${meta.color}20`, color: meta.color }}>
-                      <Icon className="w-5 h-5" />
+              <div className="card h-100 border-0 shadow-sm position-relative overflow-hidden" style={{ background: "var(--card)" }}>
+                {/* Ambient glow */}
+                <div className="position-absolute top-0 end-0 rounded-circle blur-3xl"
+                  style={{ width: 128, height: 128, opacity: 0.15, background: meta.color }} />
+
+                <div className="card-body position-relative p-4">
+                  {/* Header: icon + name + status */}
+                  <div className="d-flex align-items-start justify-content-between mb-3">
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="d-flex align-items-center justify-content-center rounded-3"
+                        style={{ width: 40, height: 40, background: `${meta.color}20`, color: meta.color }}>
+                        <Icon style={{ width: 20, height: 20 }} />
+                      </div>
+                      <div>
+                        <div className="fw-semibold small">{p.displayName || p.id}</div>
+                        <div className="text-muted" style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          {meta.category}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold">{p.displayName}</div>
-                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{meta.category}</div>
+                    <span className="badge rounded-pill d-flex align-items-center gap-1"
+                      style={{
+                        background: `${statusColor}15`,
+                        color: statusColor,
+                        padding: "0.35em 0.6em",
+                        fontSize: "0.65rem",
+                        fontWeight: 600,
+                      }}>
+                      {healthState === "running" && !health ? (
+                        <Loader2 className="spin" style={{ width: 10, height: 10 }} />
+                      ) : isConnected ? (
+                        <CheckCircle2 style={{ width: 10, height: 10 }} />
+                      ) : (
+                        <XCircle style={{ width: 10, height: 10 }} />
+                      )}
+                      {statusLabel}
+                    </span>
+                  </div>
+
+                  {/* Tagline */}
+                  <p className="text-muted small mb-3" style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>
+                    {meta.tagline}
+                  </p>
+
+                  {/* Model info */}
+                  <div className="rounded-3 p-2 mb-3" style={{ background: "rgba(153,171,199,0.06)" }}>
+                    <div className="text-muted text-uppercase" style={{ fontSize: "0.6rem", letterSpacing: "0.05em", marginBottom: "0.15rem" }}>
+                      Underlying model
+                    </div>
+                    <div className="font-monospace small">{p.model || "—"}</div>
+                    {p.modelDisplayName && (
+                      <div className="text-muted mt-1" style={{ fontSize: "0.65rem" }}>{p.modelDisplayName}</div>
+                    )}
+                  </div>
+
+                  {/* Capabilities */}
+                  <div className="mb-3">
+                    <div className="text-muted text-uppercase mb-2" style={{ fontSize: "0.6rem", letterSpacing: "0.05em" }}>
+                      Capabilities
+                    </div>
+                    <div className="d-flex flex-wrap gap-1">
+                      {(p.capabilities || []).map((c: string) => (
+                        <span key={c} className="badge bg-secondary-subtle text-secondary-emphasis"
+                          style={{ fontSize: "0.6rem", fontWeight: 500 }}>
+                          {c}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                  <span className="status-pill status-pill-live">LIVE</span>
-                </div>
 
-                {/* Model */}
-                <div className="bg-card/40 rounded-md p-2.5 mb-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Underlying model</div>
-                  <div className="text-xs font-mono">{p.model || "—"}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">{p.modelDisplayName}</div>
-                </div>
+                  {/* Live check result */}
+                  {health && (
+                    <div className="mb-3 p-2 rounded-3" style={{ background: health.connected ? "rgba(48,201,149,0.06)" : "rgba(240,113,120,0.06)" }}>
+                      <div className="d-flex align-items-center justify-content-between" style={{ fontSize: "0.65rem" }}>
+                        <span className="text-muted text-uppercase" style={{ letterSpacing: "0.05em" }}>Live check</span>
+                        <span style={{ color: statusColor, fontWeight: 600 }}>{health.latencyMs}ms</span>
+                      </div>
+                      {health.error && (
+                        <div className="text-danger mt-1" style={{ fontSize: "0.6rem" }}>{health.error.slice(0, 60)}</div>
+                      )}
+                    </div>
+                  )}
 
-                {/* Capabilities */}
-                <div className="mb-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Capabilities</div>
-                  <div className="flex flex-wrap gap-1">
-                    {p.capabilities.map((c: string) => (
-                      <span key={c} className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground">
-                        {c}
-                      </span>
-                    ))}
+                  {/* Footer */}
+                  <div className="d-flex align-items-center justify-content-between text-muted" style={{ fontSize: "0.65rem" }}>
+                    <span className="d-flex align-items-center gap-1">
+                      <Clock style={{ width: 12, height: 12 }} />
+                      {p.lastChecked ? new Date(p.lastChecked).toLocaleTimeString() : "—"}
+                    </span>
+                    <span className="font-monospace text-uppercase" style={{ letterSpacing: "0.05em" }}>
+                      {p.gateway || "openrouter"}
+                    </span>
                   </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {p.lastChecked ? new Date(p.lastChecked).toLocaleTimeString() : "—"}
-                  </span>
-                  <span className="font-mono">{p.gateway || "openrouter"}</span>
                 </div>
               </div>
             </motion.div>
@@ -175,33 +302,35 @@ export function ModelsPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="mystic-card p-5 relative overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, rgba(79,140,255,0.06), rgba(155,122,255,0.04))",
-            borderColor: "rgba(79,140,255,0.2)",
-          }}
+          className="col-md-6 col-lg-4"
         >
-          <div className="absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl opacity-25"
-            style={{ background: "radial-gradient(circle, var(--primary), transparent 70%)" }} />
-          <div className="relative">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg, var(--primary), var(--accent))" }}>
-                <Zap className="w-5 h-5 text-white" />
+          <div className="card h-100 border-0 shadow-sm position-relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, rgba(79,140,255,0.06), rgba(155,122,255,0.04))",
+              borderColor: "rgba(79,140,255,0.2)",
+            }}>
+            <div className="position-absolute top-0 end-0 rounded-circle blur-3xl"
+              style={{ width: 160, height: 160, opacity: 0.25, background: "radial-gradient(circle, var(--primary), transparent 70%)" }} />
+            <div className="card-body position-relative p-4">
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <div className="d-flex align-items-center justify-content-center rounded-3"
+                  style={{ width: 40, height: 40, background: "linear-gradient(135deg, var(--primary), var(--accent))" }}>
+                  <Zap className="text-white" style={{ width: 20, height: 20 }} />
+                </div>
+                <div>
+                  <div className="fw-semibold small">Unified Gateway</div>
+                  <div className="text-muted text-uppercase" style={{ fontSize: "0.65rem", letterSpacing: "0.05em" }}>OpenRouter</div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-semibold">Unified Gateway</div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">OpenRouter</div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              All engines route through OpenRouter's unified API. Single API key, single billing, full model diversity.
-              GLM uses the native z-ai-sdk for maximum capability.
-            </p>
-            <div className="mt-3 pt-3 border-t border-border">
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">Verified models</span>
-                <span className="font-mono">{providers.length}/5</span>
+              <p className="text-muted small" style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>
+                All engines route through OpenRouter's unified API. Single API key, single billing, full model diversity.
+                GLM uses the native z-ai-sdk for maximum capability.
+              </p>
+              <div className="mt-3 pt-3 border-top">
+                <div className="d-flex align-items-center justify-content-between" style={{ fontSize: "0.65rem" }}>
+                  <span className="text-muted text-uppercase" style={{ letterSpacing: "0.05em" }}>Verified models</span>
+                  <span className="font-monospace fw-semibold">{providers.length}/5</span>
+                </div>
               </div>
             </div>
           </div>

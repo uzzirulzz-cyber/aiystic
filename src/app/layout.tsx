@@ -27,7 +27,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme="midnight">
+    <html lang="en" suppressHydrationWarning data-theme="midnight" data-coreui="theme">
+      <head>
+        {/* CoreUI Bootstrap 5 + CoreUI components */}
+        <link rel="stylesheet" href="/coreui/css/style.min.css" />
+        <script defer src="/coreui/js/coreui.bundle.min.js" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
       >
