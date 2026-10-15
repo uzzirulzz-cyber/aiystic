@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getR2Config } from "@/lib/r2";

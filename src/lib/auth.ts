@@ -1,29 +1,85 @@
 // Mystic AI - Auth helpers
+// Uses Web Crypto API (works on both Edge runtime and Node.js)
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
-import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 
 const SESSION_COOKIE = "mystic_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-// Simple password hash (Node's scrypt — async-friendly, no native deps)
+// Web Crypto API — works on Edge runtime (Cloudflare Workers) and Node.js 18+
 async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt$${salt}$${hash}`;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const hashBuf = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return `pbkdf2$${saltHex}$${hashHex}`;
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
   try {
-    if (!stored.startsWith("scrypt$")) return false;
+    if (!stored.startsWith("pbkdf2$") && !stored.startsWith("scrypt$")) return false;
     const [, salt, hash] = stored.split("$");
-    const testHashBuf = scryptSync(password, salt, 64);
-    const storedBuf = Buffer.from(hash, "hex");
-    if (testHashBuf.length !== storedBuf.length) return false;
-    return timingSafeEqual(testHashBuf, storedBuf);
+    const encoder = new TextEncoder();
+    
+    // If it's a legacy scrypt hash, try Node crypto (works on Node, not on Edge)
+    if (stored.startsWith("scrypt$")) {
+      try {
+        const { scryptSync, timingSafeEqual } = await import("crypto");
+        const testHashBuf = scryptSync(password, salt, 64);
+        const storedBuf = Buffer.from(hash, "hex");
+        if (testHashBuf.length !== storedBuf.length) return false;
+        return timingSafeEqual(testHashBuf, storedBuf);
+      } catch {
+        return false;
+      }
+    }
+    
+    // PBKDF2 hash (Edge-compatible)
+    const saltBytes = new Uint8Array(salt.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)));
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const testHashBuf = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: saltBytes,
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      256
+    );
+    const testHashHex = Array.from(new Uint8Array(testHashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    return testHashHex === hash;
   } catch {
     return false;
   }
+}
+
+function generateToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 export async function createUser(email: string, password: string, name?: string, role: string = "USER") {
@@ -49,7 +105,7 @@ export async function createUser(email: string, password: string, name?: string,
 }
 
 export async function createSession(userId: string) {
-  const token = randomUUID();
+  const token = generateToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
   const session = await db.session.create({

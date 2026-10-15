@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { NextResponse } from "next/server";
 import { PROVIDERS, type Provider } from "@/lib/types";
 import { isOpenRouterConfigured, ENGINE_MODELS } from "@/lib/openrouter";
@@ -6,21 +8,38 @@ import { db } from "@/lib/db";
 export async function GET() {
   const live = isOpenRouterConfigured();
 
-  // Read latest provider status from DB (updated by health-check)
-  const dbConfigs = await db.providerConfig.findMany();
-  const dbMap = Object.fromEntries(dbConfigs.map((p) => [p.name, p]));
+  // Read latest provider status from DB
+  let dbConfigs: any[] = [];
+  let dbMap: Record<string, any> = {};
+  try {
+    dbConfigs = await db.providerConfig.findMany();
+    dbMap = Object.fromEntries(dbConfigs.map((p) => [p.name, p]));
+  } catch (err) {
+    // DB might not be available yet
+  }
 
   const providers = Object.values(PROVIDERS).map((p) => {
     const engineModel = ENGINE_MODELS[p.id as Provider];
     const dbConfig = dbMap[p.id];
-    const configJson = dbConfig?.configJson ? JSON.parse(dbConfig.configJson) : {};
+    let configJson: any = {};
+    try {
+      configJson = dbConfig?.configJson ? JSON.parse(dbConfig.configJson) : {};
+    } catch {}
+
+    // D1 returns integers (0/1) for booleans, strings for dates
+    const isConnected = dbConfig ? !!dbConfig.connected : live;
+    const isEnabled = dbConfig ? !!dbConfig.enabled : true;
+    const lastChecked = dbConfig?.lastChecked
+      ? (typeof dbConfig.lastChecked === "string" ? dbConfig.lastChecked : new Date(dbConfig.lastChecked).toISOString())
+      : new Date().toISOString();
+
     return {
       ...p,
-      connected: dbConfig?.connected ?? live,
-      enabled: dbConfig?.enabled ?? true,
+      connected: isConnected,
+      enabled: isEnabled,
       fullyConfigured: live,
-      liveResult: dbConfig?.connected ?? live,
-      lastChecked: dbConfig?.lastChecked?.toISOString() || new Date().toISOString(),
+      liveResult: isConnected,
+      lastChecked,
       model: engineModel?.model || configJson.model || null,
       modelDisplayName: engineModel?.displayName || dbConfig?.displayName || null,
       alternatives: engineModel?.alternatives || [],
