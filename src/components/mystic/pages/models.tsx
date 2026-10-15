@@ -48,14 +48,20 @@ export function ModelsPage() {
     try {
       const res = await fetch("/api/providers/list");
       const data = await res.json();
-      setProviders(data.providers || []);
-      return data.providers || [];
+      const list = data.providers || [];
+      setProviders(list);
+      // If all providers are already connected in DB, show as "passed" immediately
+      const allConnected = list.length > 0 && list.every((p: any) => p.connected);
+      if (allConnected && healthState === "idle") {
+        setHealthState("passed");
+      }
+      return list;
     } catch {
       return [];
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [healthState]);
 
   const runHealthCheck = useCallback(async (silent = false) => {
     setHealthState("running");
@@ -182,13 +188,14 @@ export function ModelsPage() {
           const meta = PROVIDER_META[p.id] || PROVIDER_META.CLAUDE;
           const Icon = meta.icon;
           const health = healthResults[p.id];
+          // A provider is "Live" if either: health check passed OR it's already marked connected in DB
           const isConnected = health ? health.connected : (p.connected ?? p.liveResult ?? true);
           const statusLabel = health
             ? (health.connected ? "Live" : "Failed")
-            : (p.connected ? "Configured" : "Connecting…");
+            : (isConnected ? "Live" : "Connecting…");
           const statusColor = health
             ? (health.connected ? "var(--success)" : "var(--danger)")
-            : (p.connected ? "var(--success)" : "var(--warning)");
+            : (isConnected ? "var(--success)" : "var(--warning)");
 
           return (
             <motion.div
