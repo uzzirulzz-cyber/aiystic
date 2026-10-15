@@ -153,7 +153,20 @@ export const db = {
     async findUnique(args: any): Promise<any> {
       const d1 = await getD1();
       if (d1 && args.where?.token) {
-        return d1.prepare("SELECT * FROM Session WHERE token = ? LIMIT 1").bind(args.where.token).first();
+        const session = await d1.prepare("SELECT * FROM Session WHERE token = ? LIMIT 1").bind(args.where.token).first();
+        if (!session) return null;
+        // If `include: { user: ... }` is specified, also fetch the user
+        if (args.include?.user) {
+          const user = await d1.prepare("SELECT * FROM User WHERE id = ? LIMIT 1").bind(session.userId).first();
+          if (user) {
+            // Convert D1 integer booleans to real booleans
+            (user as any).creditBalanceUsd = Number((user as any).creditBalanceUsd) || 0;
+            (user as any).creditMonthlyUsd = Number((user as any).creditMonthlyUsd) || 0;
+          }
+          // Return in Prisma-compatible format: { ...session, user: {...} }
+          return { ...session, user };
+        }
+        return session;
       }
       const prisma = await getPrisma();
       return prisma.session.findUnique(args);
@@ -395,7 +408,16 @@ export const db = {
       const d1 = await getD1();
       if (d1) {
         if (args?.where?.status) {
-          const statuses = Array.isArray(args.where.status) ? args.where.status.in : [args.where.status];
+          // Handle both `status: "COMPLETED"` and `status: { in: [...] }`
+          const statusWhere = args.where.status;
+          let statuses: string[];
+          if (Array.isArray(statusWhere)) {
+            statuses = statusWhere;
+          } else if (typeof statusWhere === "object" && statusWhere.in) {
+            statuses = statusWhere.in;
+          } else {
+            statuses = [statusWhere as string];
+          }
           const placeholders = statuses.map(() => "?").join(",");
           const r = await d1.prepare(`SELECT COUNT(*) as c FROM Task WHERE status IN (${placeholders})`).bind(...statuses).first();
           return r?.c || 0;

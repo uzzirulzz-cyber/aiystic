@@ -149,7 +149,9 @@ export async function getUserByToken(token: string) {
   });
 
   if (!session) return null;
-  if (session.expiresAt < new Date()) {
+  // D1 returns expiresAt as a string — convert to Date for comparison
+  const expiresAt = typeof session.expiresAt === "string" ? new Date(session.expiresAt) : session.expiresAt;
+  if (expiresAt < new Date()) {
     await db.session.delete({ where: { id: session.id } });
     return null;
   }

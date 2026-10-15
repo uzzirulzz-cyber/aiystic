@@ -14,7 +14,24 @@ export async function GET() {
         _count: { select: { files: true, tasks: true } },
       },
     });
-    return NextResponse.json({ projects });
+
+    // D1 doesn't support Prisma's _count include — add it manually
+    const projectsWithCounts = await Promise.all(
+      (projects || []).map(async (p: any) => {
+        if (p._count) return p; // Prisma already added it
+        try {
+          const d1 = await import("@cloudflare/next-on-pages").then(m => m.getRequestContext().env.DB).catch(() => null);
+          if (d1) {
+            const fileCount = await d1.prepare("SELECT COUNT(*) as c FROM ProjectFile WHERE projectId = ?").bind(p.id).first();
+            const taskCount = await d1.prepare("SELECT COUNT(*) as c FROM Task WHERE projectId = ?").bind(p.id).first();
+            return { ...p, _count: { files: fileCount?.c || 0, tasks: taskCount?.c || 0 } };
+          }
+        } catch {}
+        return { ...p, _count: { files: 0, tasks: 0 } };
+      })
+    );
+
+    return NextResponse.json({ projects: projectsWithCounts });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed";
     if (message === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
